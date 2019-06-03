@@ -157,6 +157,9 @@ mem_init(void)
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
 
+	uint32_t env_size = sizeof(struct Env) * NENV;
+	envs = (struct Env*)boot_alloc(env_size);
+	memset(envs,0,env_size);
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
 	// up the list of free physical pages. Once we've done so, all further
@@ -188,6 +191,7 @@ mem_init(void)
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
 
+	boot_map_region(kern_pgdir,UENVS,PTSIZE,PADDR(envs),PTE_U);
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
 	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
@@ -545,8 +549,20 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
-
-	return 0;
+	user_mem_check_addr = 0;
+    for (const void *b = va; (b - va) < len; b += PGSIZE) {
+        // 注意在这里检查一下内存地址的有效性
+        user_mem_check_addr = (size_t)b < ULIM ? 0 : (size_t)b;
+        if (!user_mem_check_addr) {
+            pte_t *pte = pgdir_walk(env->env_pgdir, b, 0);
+            if (!pte || !(*pte & (PTE_P|perm|PTE_U))) {
+                user_mem_check_addr = (size_t)b;
+            }
+        }
+        if (user_mem_check_addr) return -E_FAULT;
+        b = ROUNDDOWN(b, PGSIZE);
+    }
+    return 0;
 }
 
 //
