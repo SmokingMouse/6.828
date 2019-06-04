@@ -275,13 +275,13 @@ region_alloc(struct Env *e, void *va, size_t len)
 	//   You should round va down, and round (va + len) up.
 	//   (Watch out for corner-cases!)
 
-	size_t l = ROUNDUP(len,PGSIZE);
-	void* v = ROUNDDOWN(va,PGSIZE);
+	void* va_begin = ROUNDDOWN(va,PGSIZE);
+	void* va_end = ROUNDUP(va+len,PGSIZE);
 
-	for(size_t i = 0;i < l;i+=PGSIZE){
+	for(void* cur = va_begin;cur < va_end;va+=PGSIZE){
 		struct PageInfo* p = page_alloc(0);
-		page_insert(e->env_pgdir,p,v,PTE_W | PTE_U);
-		v+=PGSIZE;
+		page_insert(e->env_pgdir,p,cur,PTE_W | PTE_U);
+		cur+=PGSIZE;
 	}
 }
 
@@ -351,6 +351,7 @@ load_icode(struct Env *e, uint8_t *binary)
 	for(;ph < eph;ph++){
 		if(ph->p_type == ELF_PROG_LOAD){
 			region_alloc(e,(void*)ph->p_va,ph->p_memsz);
+			
 			memcpy((void*)ph->p_va,(void*)binary+ph->p_offset,ph->p_filesz);
 			if(ph->p_filesz < ph->p_memsz)
 				memset((void*)ph->p_va+ph->p_filesz,0,ph->p_memsz-ph->p_filesz);
@@ -379,6 +380,8 @@ env_create(uint8_t *binary, enum EnvType type)
 	env_alloc(&e,0);
 	load_icode(e,binary);
 	e->env_type = type;
+
+	
 }
 
 //
