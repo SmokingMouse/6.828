@@ -25,6 +25,15 @@ pgfault(struct UTrapframe *utf)
 	//   (see <inc/memlayout.h>).
 
 	// LAB 4: Your code here.
+	if(!(err & FEC_WR) || !((uvpt[PGNUM(addr)] & PTE_COW))){
+		panic("unexpected page error.\n");
+	}
+	
+	addr = ROUNDDOWN(addr,PGSIZE);
+	sys_page_alloc(0,PFTEMP,PTE_W|PTE_P|PTE_U);
+	memmove(PFTEMP,addr,PGSIZE);
+	sys_page_map(0,PFTEMP,0,addr,PTE_P|PTE_U|PTE_W);
+	sys_page_unmap(0,PFTEMP);
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
@@ -34,7 +43,6 @@ pgfault(struct UTrapframe *utf)
 
 	// LAB 4: Your code here.
 
-	panic("pgfault not implemented");
 }
 
 //
@@ -52,9 +60,19 @@ static int
 duppage(envid_t envid, unsigned pn)
 {
 	int r;
+	uint32_t va;
 
 	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	va = PGSIZE * pn;
+
+    if (uvpt[pn] & PTE_COW || uvpt[pn] & PTE_W) {
+        if ((r = sys_page_map(thisenv->env_id, (void *)va, envid, (void *)va, PTE_P|PTE_U|PTE_COW)) < 0)
+            panic("2");
+        if ((r = sys_page_map(thisenv->env_id, (void *)va, thisenv->env_id, (void *)va, PTE_P|PTE_U|PTE_COW)) < 0)
+            panic("3");
+    } else
+        if ((r = sys_page_map(thisenv->env_id, (void *)va, envid, (void *)va, PTE_U|PTE_P)) < 0)
+            panic("4");
 	return 0;
 }
 
@@ -78,7 +96,38 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
-	panic("fork not implemented");
+	set_pgfault_handler(pgfault);
+	
+	envid_t env_id;
+	uint32_t va;
+	int r;
+
+	env_id = sys_exofork();
+	
+	if(env_id == 0){
+		thisenv = &envs[ENVX(sys_getenvid())];
+		return 0;
+	}
+	for(va = 0;va < USTACKTOP;va+=PGSIZE){
+		
+		if((uvpd[PDX(va)] & PTE_P) && (uvpt[PGNUM(va)] & (PTE_P | PTE_U))){
+			duppage(env_id,PGNUM(va));
+		}
+	}
+	
+
+
+	if((r = sys_page_alloc(env_id,(void*)UXSTACKTOP-PGSIZE,PTE_U|PTE_P|PTE_W)) < 0){
+		return r;
+	}
+
+	extern void _pgfault_upcall(void);
+	sys_env_set_pgfault_upcall(env_id,_pgfault_upcall);
+
+	if((r = sys_env_set_status(env_id,ENV_RUNNABLE)) < 0){
+		return r;
+	}
+	return env_id;
 }
 
 // Challenge!
