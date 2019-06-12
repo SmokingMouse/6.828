@@ -65,6 +65,11 @@ duppage(envid_t envid, unsigned pn)
 	// LAB 4: Your code here.
 	va = PGSIZE * pn;
 
+	if(uvpt[pn] & PTE_SHARE){
+		if((r = sys_page_map(0,(void *)va,envid,(void*)va,uvpt[pn] & PTE_SYSCALL)) < 0) return r;
+		return r;
+	}
+
     if (uvpt[pn] & PTE_COW || uvpt[pn] & PTE_W) {
         if ((r = sys_page_map(thisenv->env_id, (void *)va, envid, (void *)va, PTE_P|PTE_U|PTE_COW)) < 0)
             panic("2");
